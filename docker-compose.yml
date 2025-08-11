@@ -1,0 +1,264 @@
+version: "3.9"
+
+x-nvidia-env: &nvidia_env
+  - NVIDIA_VISIBLE_DEVICES=all
+  - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,transcode
+
+services:
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - VERSION=docker
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,transcode
+    volumes:
+      - ${CONFIG_ROOT}/plex:/config
+      - ${MEDIA_ROOT}:/media
+      - ${TRANSCODE_ROOT}:/transcode
+    ports:
+      - "32400:32400"
+    # For NVIDIA GPU: ensure nvidia runtime is available on the Docker host
+    # runtime: nvidia
+    # devices:
+    #   - "/dev/nvidia0:/dev/nvidia0"
+    #   - "/dev/nvidiactl:/dev/nvidiactl"
+    #   - "/dev/nvidia-uvm:/dev/nvidia-uvm"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  jellyfin:
+    image: jellyfin/jellyfin:latest
+    container_name: jellyfin
+    user: "${PUID}:${PGID}"
+    environment:
+      - TZ=${TZ}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,transcode
+    volumes:
+      - ${CONFIG_ROOT}/jellyfin:/config
+      - ${MEDIA_ROOT}:/media
+      - ${TRANSCODE_ROOT}:/cache
+    ports:
+      - "8096:8096"
+    # For NVIDIA GPU
+    # runtime: nvidia
+    # devices:
+    #   - "/dev/nvidia0:/dev/nvidia0"
+    #   - "/dev/nvidiactl:/dev/nvidiactl"
+    #   - "/dev/nvidia-uvm:/dev/nvidia-uvm"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/prowlarr:/config
+    ports:
+      - "9696:9696"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - WEBUI_PORT=8080
+    volumes:
+      - ${CONFIG_ROOT}/qbittorrent:/config
+      - ${DOWNLOADS_ROOT}:/downloads
+    ports:
+      - "8080:8080"
+      - "6881:6881"
+      - "6881:6881/udp"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/radarr:/config
+      - ${MEDIA_ROOT}/movies:/movies
+      - ${DOWNLOADS_ROOT}:/downloads
+    ports:
+      - "7878:7878"
+    depends_on:
+      - qbittorrent
+      - prowlarr
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/sonarr:/config
+      - ${MEDIA_ROOT}/tv:/tv
+      - ${DOWNLOADS_ROOT}:/downloads
+    ports:
+      - "8989:8989"
+    depends_on:
+      - qbittorrent
+      - prowlarr
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/bazarr:/config
+      - ${MEDIA_ROOT}/movies:/movies
+      - ${MEDIA_ROOT}/tv:/tv
+    ports:
+      - "6767:6767"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  overseerr:
+    image: sctx/overseerr:latest
+    container_name: overseerr
+    environment:
+      - TZ=${TZ}
+      - LOG_LEVEL=info
+    volumes:
+      - ${CONFIG_ROOT}/overseerr:/app/config
+    ports:
+      - "5055:5055"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  tautulli:
+    image: lscr.io/linuxserver/tautulli:latest
+    container_name: tautulli
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    volumes:
+      - ${CONFIG_ROOT}/tautulli:/config
+    ports:
+      - "8181:8181"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    environment:
+      - TZ=${TZ}
+      - LOG_LEVEL=info
+    ports:
+      - "8191:8191"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  tdarr:
+    image: ghcr.io/haveagitgat/tdarr:latest
+    container_name: tdarr
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK_SET=${UMASK}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,transcode
+    volumes:
+      - ${CONFIG_ROOT}/tdarr/server:/app/server
+      - ${CONFIG_ROOT}/tdarr/configs:/app/configs
+      - ${CONFIG_ROOT}/tdarr/logs:/app/logs
+      - ${MEDIA_ROOT}:/media
+      - ${TRANSCODE_ROOT}:/temp
+    ports:
+      - "8265:8265"
+      - "8266:8266"
+      - "8267:8267"
+    # For NVIDIA GPU
+    # runtime: nvidia
+    # devices:
+    #   - "/dev/nvidia0:/dev/nvidia0"
+    #   - "/dev/nvidiactl:/dev/nvidiactl"
+    #   - "/dev/nvidia-uvm:/dev/nvidia-uvm"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  tdarr-node:
+    image: ghcr.io/haveagitgat/tdarr_node:latest
+    container_name: tdarr-node
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+      - UMASK_SET=${UMASK}
+      - serverIP=tdarr
+      - serverPort=8266
+      - nodeID=tdarr-node-1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility,video,transcode
+    volumes:
+      - ${CONFIG_ROOT}/tdarr/configs:/app/configs
+      - ${CONFIG_ROOT}/tdarr/logs:/app/logs
+      - ${MEDIA_ROOT}:/media
+      - ${TRANSCODE_ROOT}:/temp
+    depends_on:
+      - tdarr
+    # For NVIDIA GPU
+    # runtime: nvidia
+    # devices:
+    #   - "/dev/nvidia0:/dev/nvidia0"
+    #   - "/dev/nvidiactl:/dev/nvidiactl"
+    #   - "/dev/nvidia-uvm:/dev/nvidia-uvm"
+    restart: unless-stopped
+    networks:
+      - media_net
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${CF_TUNNEL_TOKEN}
+    networks:
+      - media_net
+
+networks:
+  media_net:
+    driver: bridge
+
+
